@@ -21,9 +21,9 @@ A stock Trongate v2 app whose home page is the `welcome` module:
 
 Each check is saved to the `evaluations` table (`Welcome_model`,
 `sql/evaluations.sql`): URL, title, TL;DR, Laya's verdict and scores, and the
-counts and per-sentence reading as JSON. The database comes from `DB_HOST`,
-`DB_PORT`, `DB_USER`, `DB_PASSWORD` and `DB_DATABASE`; the table is created
-on the first save. Without `DB_DATABASE` nothing is stored and the page works
+counts and per-sentence reading as JSON. On trongate.cloud each deploy fills
+in the app's database in `config/database.php`; the table is created
+on the first save. With no database name nothing is stored and the page works
 as before. Checks are limited to 10 per visitor address per 10 minutes.
 
 ```bash

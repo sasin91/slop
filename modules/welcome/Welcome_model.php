@@ -4,7 +4,8 @@
  * URL, title, TL;DR, Laya's verdict and scores, and the counts, stock words
  * and per-sentence reading as JSON.
  *
- * With no database configured (config/database.php, `database` empty) it
+ * With no database configured (config/database.php, `database` empty, as
+ * in a local checkout; trongate.cloud fills it in on deploy) it
  * saves nothing, so the page works without one.
  */
 class Welcome_model extends Model {
