@@ -45,12 +45,15 @@ class Welcome extends Trongate {
             echo json_encode($result + ['id' => $this->model->save_evaluation($result)]);
         } catch (Throwable $e) {
             // A status set before the throw (400s) is the visitor's input,
-            // not a failure worth logging.
-            if (http_response_code() < 400) {
-                http_response_code(502);
-                self::log_failure($e);
+            // with a message for them. Anything else is ours: its message
+            // (a database's can quote SQL) goes to the log, not the page.
+            if (http_response_code() >= 400) {
+                echo json_encode(['error' => $e->getMessage()]);
+                return;
             }
-            echo json_encode(['error' => $e->getMessage()]);
+            http_response_code(500);
+            self::log_failure($e);
+            echo json_encode(['error' => 'Something went wrong on our side, so there is no result. Try again in a moment.']);
         }
     }
 
