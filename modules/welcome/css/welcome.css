@@ -259,3 +259,57 @@ summary { cursor: pointer; color: var(--accent); margin: 8px 0; }
 .sentences li { margin-bottom: 4px; }
 .sentences .filler { background: var(--partial-bg); }
 .sentences .repeat { text-decoration: line-through; color: var(--muted); }
+.sentences .found { animation: flash 1.6s var(--ease); }
+@keyframes flash { from { background: var(--accent-soft); } }
+
+/* ---------- Ask and the timeline ---------- */
+
+#ask-form { margin-bottom: 4px; }
+.questions { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.questions button {
+  min-height: 0;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  border-color: transparent;
+  color: var(--accent);
+  font-size: 0.9rem;
+}
+.answers { padding-left: 1.4em; }
+.answers li { margin-bottom: 8px; }
+.answers li.reveal { --i: 0; }
+.answers mark { background: var(--accent-soft); color: inherit; border-radius: 3px; padding: 0 2px; }
+.answers .where, .timeline .where { font-size: 0.85rem; }
+
+.timeline { list-style: none; padding: 0; margin: 0; counter-reset: step; }
+.timeline li {
+  position: relative;
+  padding: 0 0 14px 40px;
+  counter-increment: step;
+}
+.timeline li::before {
+  content: counter(step);
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+.timeline li:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  left: 12px;
+  top: 28px;
+  bottom: 2px;
+  width: 2px;
+  background: var(--line);
+}
+.answers .link-button, .timeline .link-button { display: block; text-align: left; color: var(--text); padding: 2px 0; }
+.answers .link-button:hover:not(:disabled), .timeline .link-button:hover:not(:disabled) { color: var(--accent); }

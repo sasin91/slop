@@ -31,9 +31,24 @@
         <h2 id="title"></h2>
         <h3>TL;DR</h3>
         <ol id="tldr"></ol>
+        <div id="ask-panel">
+            <h3><label for="ask">Ask the article</label></h3>
+            <form class="url-row" id="ask-form" role="search">
+                <input type="search" id="ask" placeholder="What does it say about…" autocomplete="off" maxlength="300">
+                <button type="submit">Ask</button>
+            </form>
+            <div class="questions" id="questions"></div>
+            <p class="muted" id="ask-note" hidden></p>
+            <ol class="answers" id="answers" aria-live="polite"></ol>
+        </div>
+        <div id="timeline-panel">
+            <h3>Timeline</h3>
+            <p class="muted">The article as a progression of points, one sentence each.</p>
+            <ol class="timeline" id="timeline"></ol>
+        </div>
         <h3>What Laya was told</h3>
         <p class="muted" id="summary"></p>
-        <details>
+        <details id="every-sentence">
             <summary>Every sentence <span class="muted" id="legend"></span></summary>
             <ol class="sentences" id="sentences"></ol>
         </details>

@@ -1,6 +1,9 @@
 // The home page: sends the link (or pasted text) to welcome/check
 // and draws the answer. The reading and the verdict happen on the server
-// (Welcome.php); this file only shows them.
+// (Welcome.php); this file only shows them, and lets the visitor ask the
+// article questions (ask.js) and walk its timeline.
+
+import { embed, highlighted, prepare, rank } from "./ask.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -47,12 +50,15 @@ function draw(answer) {
     title.textContent = answer.title || "Pasted text";
   }
   $("tldr").replaceChildren(...answer.tldr.map((s) => el("li", s)));
+  drawAsk(answer);
+  drawTimeline(answer);
   $("summary").textContent = answer.summary;
   $("legend").textContent = "(filler is marked, repeats are struck through)";
   $("sentences").replaceChildren(
-    ...answer.sentences.map((s) => {
+    ...answer.sentences.map((s, i) => {
       const classes = [s.filler ? "filler" : "", s.repeats !== null ? "repeat" : ""].join(" ").trim();
       const item = el("li", s.text, classes);
+      item.id = `sentence-${i}`;
       item.title = `Leans ${s.lean > 0 ? "to filler" : "to substance"} by ${Math.abs(s.lean).toFixed(2)}`
         + (s.repeats !== null ? `; repeats sentence ${s.repeats + 1}` : "");
       return item;
@@ -60,6 +66,92 @@ function draw(answer) {
   );
   $("result").hidden = false;
 }
+
+// ---------- Ask and the timeline ----------
+
+let asking = null; // the answer being asked about, prepared by ask.js
+
+/** Opens "Every sentence" at sentence `i` and flashes it. */
+function showSentence(i) {
+  $("every-sentence").open = true;
+  const item = $(`sentence-${i}`);
+  if (!item) return;
+  item.classList.remove("found");
+  void item.offsetWidth; // restart the flash
+  item.classList.add("found");
+  item.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+function sentenceButton(i, nodes) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "link-button";
+  button.append(...nodes);
+  button.addEventListener("click", () => showSentence(i));
+  return button;
+}
+
+function drawTimeline(answer) {
+  $("timeline-panel").hidden = answer.timeline.length === 0;
+  $("timeline").replaceChildren(
+    ...answer.timeline.map((step) => {
+      const item = document.createElement("li");
+      const where = step.from === step.to ? `sentence ${step.from + 1}` : `sentences ${step.from + 1}–${step.to + 1}`;
+      item.append(sentenceButton(step.sentence, [document.createTextNode(step.text)]), el("div", where, "muted where"));
+      return item;
+    }),
+  );
+}
+
+function drawAsk(answer) {
+  asking = prepare(answer);
+  $("ask").value = "";
+  $("answers").replaceChildren();
+  $("ask-note").hidden = true;
+  $("questions").replaceChildren(
+    ...answer.questions.map((question) => {
+      const button = el("button", question);
+      button.type = "button";
+      button.addEventListener("click", () => {
+        $("ask").value = question;
+        ask(question);
+      });
+      return button;
+    }),
+  );
+}
+
+async function ask(question) {
+  question = question.trim();
+  if (!asking || !question) return;
+  const prepared = asking;
+  let vector = null;
+  let note = "";
+  try {
+    vector = await embed(question);
+  } catch {
+    note = "Couldn't read the question's meaning, so these match its words only.";
+  }
+  if (prepared !== asking || $("ask").value.trim() !== question) return; // asked something else since
+  const results = rank(prepared, question, vector);
+  if (!results.length) note = "Nothing in the article matches that. Try other words.";
+  $("ask-note").textContent = note;
+  $("ask-note").hidden = !note;
+  $("answers").replaceChildren(
+    ...results.map((r, i) => {
+      const item = document.createElement("li");
+      item.className = "reveal";
+      item.style.setProperty("--i", i);
+      item.append(sentenceButton(r.index, highlighted(r.text, r.matched)), el("div", `sentence ${r.index + 1}`, "muted where"));
+      return item;
+    }),
+  );
+}
+
+$("ask-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  ask($("ask").value);
+});
 
 async function check(event) {
   event.preventDefault();
