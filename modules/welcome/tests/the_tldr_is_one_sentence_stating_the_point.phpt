@@ -28,6 +28,22 @@ $sentences = [
 $reading = Slop_index::load()->assess(['title' => 'Let agents use Unix tools instead of MCP', 'sentences' => $sentences,
     'words' => 120, 'code_blocks' => 0, 'links' => 1]);
 echo $reading['tldr'], "\n";
+
+// The point under a takeaway heading beats one stated as well mid-article,
+// and the title repeated in a series' list of parts, a quoted example and
+// a line of figures don't count.
+$sentences = [
+    'Most agent prompts today are long English essays with invented checklists.',
+    'What people write: "Please never skip step six, and always update the progress file."',
+    'Models drift from invented checklists because nothing like them was ever in their training data.',
+    'The make run passed 98 of 120 trials, 81.7% overall, 93.3% on flash and 100% on pro.',
+    'The Takeaway',
+    'A Makefile the model already knows is worth more than a thousand lines of invented prompt rules.',
+    'Part 2: Stop inventing prompt languages and use the Unix tools models know',
+];
+$reading = Slop_index::load()->assess(['title' => 'Stop inventing prompt languages and use the Unix tools models know',
+    'sentences' => $sentences, 'words' => 110, 'code_blocks' => 0, 'links' => 0]);
+echo $reading['tldr'], "\n";
 ?>
 --EXPECT--
 Agents should use the shell they already know from training.
@@ -36,3 +52,4 @@ For most developer work, the CLI is the cheaper path.
 Your custom MCP tools never appear in training data.
 Models already know grep, sed and awk because millions of scripts use them, so lean on those tools first.
 Agents should call the Unix tools they already know from training instead of new MCP schemas.
+A Makefile the model already knows is worth more than a thousand lines of invented prompt rules.

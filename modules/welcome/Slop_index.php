@@ -18,11 +18,12 @@ require_once __DIR__ . '/Article_map.php';
  * - stock words: the vocabulary of generated text (STOCK_WORDS), counted
  *   as words, since a static model can't tell "delve" from "dig".
  * - TL;DR: one short sentence stating the article's point. Of the
- *   prose sentences that aren't filler, repeats, questions or citations,
- *   the one nearest both the title and the centre of the article, with a
- *   lift for sentences that state a claim (CLAIM_CUES) and a drop for the
- *   intro, which sets the scene more often than it states the point;
- *   then cut to its main clause (gist()).
+ *   prose sentences that aren't filler, repeats, headings, questions,
+ *   examples or citations, the one nearest both the title and the centre
+ *   of the article, with a lift for sentences that state a claim
+ *   (CLAIM_CUES) or follow a takeaway heading, and a drop for the intro,
+ *   which sets the scene more often than it states the point; then cut to
+ *   its main clause (gist()).
  * - the timeline, the questions to ask and the sentences' vectors, for
  *   the page's Ask box: see Article_map.
  *
@@ -46,6 +47,14 @@ class Slop_index {
     const INTRO = 0.15;
     const INTRO_DROP = 0.04;
     const ASIDE_DROP = 0.1;
+    const TAKEAWAY_LIFT = 0.15;
+    const TAKEAWAY_REACH = 3;
+    const TITLE_ECHO = 0.9;
+    const MAX_FIGURES = 4;
+
+    // A heading over the article's conclusion.
+    const TAKEAWAY = '/^(?:the |key |my |final )?(?:takeaways?|conclusions?|bottom line|tl;?dr|summary|in summary|in short|'
+        . 'final thoughts|wrapping up|lessons? learned)\b/iu';
 
     // Words that state a point rather than describe a step.
     const CLAIM_CUES = '/\b(should|shouldn[\x27’]t|must|don[\x27’]t need|no need|instead|rather than| than |better|cheaper|faster|'
@@ -171,8 +180,9 @@ class Slop_index {
 
     /**
      * The sentences that could state the point, best first, as index =>
-     * score: nearness to the title and the centre, CLAIM_LIFT for a claim,
-     * less INTRO_DROP in the intro and ASIDE_DROP for an aside.
+     * score: nearness to the title and the centre, CLAIM_LIFT for a claim
+     * and TAKEAWAY_LIFT for one under a takeaway heading, less INTRO_DROP
+     * in the intro and ASIDE_DROP for an aside.
      *
      * @return array<int, float>
      */
@@ -193,12 +203,26 @@ class Slop_index {
         }
         $centre = Static_model::unit($centre);
         $intro = max(2, (int) ceil($n * self::INTRO));
+        // The sentences just after a "Takeaway" or "Conclusion" heading.
+        $after_takeaway = [];
+        foreach ($sentences as $i => $sentence) {
+            if (preg_match(self::TAKEAWAY, $sentence['text'])) {
+                $after_takeaway += array_fill_keys(range($i, $i + self::TAKEAWAY_REACH), true);
+            }
+        }
         $scores = [];
         foreach ($pool as $i) {
             $text = $sentences[$i]['text'];
             $score = Static_model::cosine($centre, $vectors[$i]);
             if ($title !== null) {
-                $score = ($score + Static_model::cosine($title, $vectors[$i])) / 2;
+                $echo = Static_model::cosine($title, $vectors[$i]);
+                if ($echo >= self::TITLE_ECHO) {
+                    continue; // the title again, as in a series' list of parts
+                }
+                $score = ($score + $echo) / 2;
+            }
+            if (isset($after_takeaway[$i])) {
+                $score += self::TAKEAWAY_LIFT;
             }
             $score += self::CLAIM_LIFT * min(2, preg_match_all(self::CLAIM_CUES, $text));
             if (preg_match(self::ASIDES, $text)) {
@@ -227,7 +251,7 @@ class Slop_index {
         if ($words($text) > self::GIST_WORDS) {
             // An aside between dashes goes first: "For most uses — a, b, c — X wins."
             // It leaves a comma only after an opening phrase, not between a subject and its verb.
-            $text = preg_replace('/\s+[—–]\s+[^—–]+\s+[—–]\s+/u', preg_match(self::NOT_MAIN, $text) ? ', ' : ' ', $text);
+            $text = preg_replace('/\s*—\s*[^—]+?\s*—\s*|\s+–\s+[^–]+?\s+–\s+/u', preg_match(self::NOT_MAIN, $text) ? ', ' : ' ', $text);
         }
         if ($words($text) > self::GIST_WORDS) {
             $colon = preg_split('/:\s+/u', $text, 2);
@@ -236,7 +260,7 @@ class Slop_index {
             }
         }
         if ($words($text) > self::GIST_WORDS) {
-            foreach (preg_split('/\s+[—–]\s+|\s+-\s+|;\s+|:\s+|,\s+(?=(?:which|while|whereas|giving|making|letting|leaving|allowing)\b)/u', $text) as $clause) {
+            foreach (preg_split('/\s*—\s*|\s+–\s+|\s+-\s+|;\s+|:\s+|,\s+(?=(?:which|while|whereas|giving|making|letting|leaving|allowing)\b)/u', $text) as $clause) {
                 // A clause opening on a preposition or "if" isn't the main one.
                 if ($words($clause) >= self::MIN_CLAUSE && !preg_match(self::NOT_MAIN, $clause)) {
                     $text = $clause;
@@ -254,17 +278,22 @@ class Slop_index {
 
     /**
      * Whether a sentence could state the point: prose of TLDR_MIN_WORDS to
-     * TLDR_MAX_WORDS words that isn't filler, a repeat, a fragment, code, a question, the
-     * lead-in to a list (ending in a colon), a pitch (PITCH) or a citation (a footnote's ↩,
-     * a [n] marker, or a quoted title).
+     * TLDR_MAX_WORDS words that ends in a full stop (so no heading, question
+     * or lead-in to a list) and isn't filler, a repeat, a fragment, a pitch
+     * (PITCH), code, a run of figures, a quoted example or a citation (a
+     * footnote's ↩, a [n] marker, or a quoted title).
      */
     private static function could_be_point(array $sentence): bool {
         $text = $sentence['text'];
         $words = preg_match_all('/[\p{L}\p{N}]+/u', $text);
         return !$sentence['filler'] && $sentence['repeats'] === null
             && $words >= self::TLDR_MIN_WORDS && $words <= self::TLDR_MAX_WORDS
-            && !preg_match('/[?:]["”’)]*$/u', $text) && !preg_match('/^\p{Ll}/u', $text) && !preg_match(self::PITCH, $text)
+            && preg_match('/[.!…]["”’)]*$/u', $text)
+            && !preg_match('/^\p{Ll}/u', $text)
+            && !preg_match(self::PITCH, $text)
             && !preg_match('/[{}<>=`]|\w_\w/u', $text)
+            && preg_match_all('/\d+(?:[.,]\d+)*%?/u', $text) <= self::MAX_FIGURES
+            && !preg_match('/^["“]|:\s*["“]/u', $text)
             && !preg_match('/↩|^\[\d+\]|^\^|,["”]\s|["“][^"”]+["”],?\s+(?:\p{L}+\.?\s+)?\d{4}/u', $text);
     }
 
