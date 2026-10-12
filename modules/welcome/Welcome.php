@@ -12,7 +12,9 @@ require_once __DIR__ . '/Laya_limit.php';
  * counts. Everything happens in the one request: a fetch (at most
  * Page_reader::TIMEOUT seconds), the embeddings (well under a second for
  * MAX_SENTENCES) and one Laya call (LAYA_TIMEOUT), inside the platform's
- * 30 second limit. Nothing is saved.
+ * 30 second limit. The result is then saved to the database when one is
+ * configured (Welcome_model); a failed save fails the check like any other
+ * server error.
  *
  * The page is public, so checks are limited per visitor address (MAX_CHECKS
  * per WINDOW seconds, Laya_limit): each one fetches a page and asks Laya,
@@ -42,15 +44,19 @@ class Welcome extends Trongate {
     public function check(): void {
         header('Content-Type: application/json');
         try {
-            echo json_encode($this->assess($this->read_input()));
+            $result = $this->assess($this->read_input());
+            echo json_encode($result + ['id' => $this->model->save_evaluation($result)]);
         } catch (Throwable $e) {
             // A status set before the throw (400s) is the visitor's input,
-            // not a failure worth logging.
-            if (http_response_code() < 400) {
-                http_response_code(502);
-                self::log_failure($e);
+            // with a message for them. Anything else is ours: its message
+            // (a database's can quote SQL) goes to the log, not the page.
+            if (http_response_code() >= 400) {
+                echo json_encode(['error' => $e->getMessage()]);
+                return;
             }
-            echo json_encode(['error' => $e->getMessage()]);
+            http_response_code(500);
+            self::log_failure($e);
+            echo json_encode(['error' => 'Something went wrong on our side, so there is no result. Try again in a moment.']);
         }
     }
 
@@ -156,6 +162,8 @@ class Welcome extends Trongate {
 
     /** Writes a failure the visitor was told about to the server log as well. */
     private static function log_failure(Throwable $e): void {
-        error_log('slop: ' . get_class($e) . ': ' . $e->getMessage());
+        for (; $e; $e = $e->getPrevious()) {
+            error_log('slop: ' . get_class($e) . ': ' . $e->getMessage());
+        }
     }
 }

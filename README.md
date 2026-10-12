@@ -25,8 +25,12 @@ A stock Trongate v2 app whose home page is the `welcome` module:
   question by meaning and by rare words, embedding the question with
   `welcome/embed`, the same model.
 
-Nothing is stored and no database is needed. Checks are limited to 10 per
-visitor address per 10 minutes.
+Each check is saved to the `evaluations` table (`Welcome_model`,
+`sql/evaluations.sql`): URL, title, TL;DR, Laya's verdict and scores, and the
+counts and per-sentence reading as JSON. On trongate.cloud each deploy fills
+in the app's database in `config/database.php`; the table is created
+on the first save. With no database name nothing is stored and the page works
+as before. Checks are limited to 10 per visitor address per 10 minutes.
 
 ```bash
 make test   # or: php bin/run-tests.php -q modules/welcome/tests
