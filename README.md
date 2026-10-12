@@ -19,8 +19,12 @@ A stock Trongate v2 app whose home page is the `welcome` module:
   service `laya`, which every app in the project reaches at `LAYA_URL`.
   Without it the page still shows the reading, with no verdict.
 
-Nothing is stored and no database is needed. Checks are limited to 10 per
-visitor address per 10 minutes.
+Each check is saved to the `evaluations` table (`Welcome_model`,
+`sql/evaluations.sql`): URL, title, TL;DR, Laya's verdict and scores, and the
+counts and per-sentence reading as JSON. The database comes from `DB_HOST`,
+`DB_PORT`, `DB_USER`, `DB_PASSWORD` and `DB_DATABASE`; the table is created
+on the first save. Without `DB_DATABASE` nothing is stored and the page works
+as before. Checks are limited to 10 per visitor address per 10 minutes.
 
 ```bash
 make test   # or: php bin/run-tests.php -q modules/welcome/tests
