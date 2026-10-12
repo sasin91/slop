@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/model/Static_model.php';
 require_once __DIR__ . '/Slop_reference.php';
+require_once __DIR__ . '/Article_map.php';
 /**
  * Embeds an article's sentences with the taxonomy's static model
  * (potion-multilingual, model/Static_model.php, from the recruiter's taxonomy) and indexes them
@@ -18,6 +19,8 @@ require_once __DIR__ . '/Slop_reference.php';
  *   as words, since a static model can't tell "delve" from "dig".
  * - TL;DR: the TLDR_SENTENCES sentences nearest the centre of the
  *   article's non-filler sentences, in the article's order.
+ * - the timeline, the questions to ask and the sentences' vectors, for
+ *   the page's Ask box: see Article_map.
  *
  * Laya then judges the counts, not the text: the bake-off found the English
  * checkpoint reliable on a code-computed summary and weak on raw text
@@ -25,6 +28,8 @@ require_once __DIR__ . '/Slop_reference.php';
  * paragraph and questions() asks a yes/no and a 0-4 score about it.
  */
 class Slop_index {
+
+    const MODEL_DIR = __DIR__ . '/model/potion-multilingual-da';
 
     const FILLER_MARGIN = 0.08;
     const NEAREST = 3;
@@ -56,7 +61,7 @@ class Slop_index {
 
     /** The index on the shipped model (taxonomy/models). */
     public static function load(): self {
-        return new self(Static_model::load(__DIR__ . '/model/potion-multilingual-da'));
+        return new self(Static_model::load(self::MODEL_DIR));
     }
 
     /**
@@ -69,7 +74,8 @@ class Slop_index {
 
     /**
      * The article (Article_reader) indexed: per sentence {text, lean, filler,
-     * repeats, figure}, the counts, the stock words found and the TL;DR.
+     * repeats, figure}, the counts, the stock words found, the TL;DR, the
+     * timeline, questions to ask and every sentence's vector (Article_map).
      */
     public function assess(array $article): array {
         $sentences = [];
@@ -112,6 +118,9 @@ class Slop_index {
             ],
             'stock_words' => $stock,
             'tldr' => $this->tldr($sentences, $vectors),
+            'timeline' => Article_map::timeline($sentences, $vectors),
+            'questions' => Article_map::questions($article['sentences']),
+            'vectors' => ['dim' => $this->model->dim, 'q8' => Article_map::pack($vectors, count($sentences), $this->model->dim)],
         ];
     }
 

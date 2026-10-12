@@ -18,6 +18,12 @@ A stock Trongate v2 app whose home page is the `welcome` module:
   "is this slop" and a 0-4 substance score. It is the Trongate.cloud project
   service `laya`, which every app in the project reaches at `LAYA_URL`.
   Without it the page still shows the reading, with no verdict.
+- `Article_map` adds a way around the article, as sasin91.xyz's AI article
+  has: a timeline (one sentence per part, cut where the topic turns),
+  suggested questions about the terms it keeps using, and every sentence's
+  vector. The page's Ask box (`js/ask.js`) ranks sentences against a
+  question by meaning and by rare words, embedding the question with
+  `welcome/embed`, the same model.
 
 Nothing is stored and no database is needed. Checks are limited to 10 per
 visitor address per 10 minutes.

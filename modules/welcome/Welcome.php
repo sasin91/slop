@@ -27,6 +27,9 @@ class Welcome extends Trongate {
     // Longest pasted text, in characters.
     const MAX_TEXT = 60000;
 
+    // Longest question for embed(), in characters.
+    const MAX_QUESTION = 300;
+
     /** The page. */
     public function index(): void {
         $this->view('welcome', ['base_url' => BASE_URL]);
@@ -43,6 +46,32 @@ class Welcome extends Trongate {
         } catch (Throwable $e) {
             // A status set before the throw (400s) is the visitor's input,
             // not a failure worth logging.
+            if (http_response_code() < 400) {
+                http_response_code(502);
+                self::log_failure($e);
+            }
+            echo json_encode(['error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * POST {text}: its `vector` with the model the sentences were embedded
+     * with, so the page can rank the article's sentences against a question
+     * it is asked (app.js). Null when no word of it is known. A table lookup
+     * with nothing fetched and nothing asked of Laya, so it is not counted
+     * against the checks.
+     */
+    public function embed(): void {
+        header('Content-Type: application/json');
+        try {
+            $text = trim((string) ($this->read_input()['text'] ?? ''));
+            if ($text === '' || mb_strlen($text, 'UTF-8') > self::MAX_QUESTION) {
+                http_response_code(422);
+                throw new RuntimeException('Ask a question of at most ' . self::MAX_QUESTION . ' characters.');
+            }
+            $vector = Static_model::load(Slop_index::MODEL_DIR)->encode($text)['vector'];
+            echo json_encode(['vector' => $vector === null ? null : array_map(fn($v) => round($v, 5), $vector)]);
+        } catch (Throwable $e) {
             if (http_response_code() < 400) {
                 http_response_code(502);
                 self::log_failure($e);
