@@ -32,7 +32,7 @@ class Welcome_model extends Model {
             'url' => $url,
             'url_hash' => $url === null ? null : hash('sha256', $url),
             'title' => mb_substr((string) $result['title'], 0, 500, 'UTF-8'),
-            'tldr' => $json($result['tldr']),
+            'tldr' => $result['tldr'],
             'verdict' => $laya['verdict'] ?? null,
             'slop' => $laya['slop'] ?? null,
             'substance' => $laya['substance'] ?? null,

@@ -11,7 +11,7 @@ $result = [
     'sentences' => [['text' => 'Imports took 4 s.', 'lean' => -0.1, 'filler' => false, 'repeats' => null, 'figure' => true]],
     'counts' => ['sentences' => 1, 'filler' => 0],
     'stock_words' => [],
-    'tldr' => ['Imports took 4 s.'],
+    'tldr' => 'Imports took 4 s.',
     'laya' => ['slop' => 0.12, 'substance' => 3.1, 'substance_label' => 'solid', 'verdict' => 'not slop'],
 ];
 print_r(Welcome_model::evaluation_row($result));
@@ -25,7 +25,7 @@ Array
     [url] => https://example.com/post
     [url_hash] => 061128ccde4ce4703519b9b2e51c036d85b137886dedcd2908fd11da004ab8c7
     [title] => Faster imports
-    [tldr] => ["Imports took 4 s."]
+    [tldr] => Imports took 4 s.
     [verdict] => not slop
     [slop] => 0.12
     [substance] => 3.1
