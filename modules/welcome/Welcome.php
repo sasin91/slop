@@ -130,6 +130,8 @@ class Welcome extends Trongate {
 
     /** Writes a failure the visitor was told about to the server log as well. */
     private static function log_failure(Throwable $e): void {
-        error_log('slop: ' . get_class($e) . ': ' . $e->getMessage());
+        for (; $e; $e = $e->getPrevious()) {
+            error_log('slop: ' . get_class($e) . ': ' . $e->getMessage());
+        }
     }
 }

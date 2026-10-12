@@ -17,10 +17,16 @@ class Welcome_model extends Model {
         if (($GLOBALS['databases']['default']['database'] ?? '') === '') {
             return null;
         }
-        if (!$this->db->table_exists(self::TABLE)) {
-            $this->db->query(file_get_contents(__DIR__ . '/sql/evaluations.sql'));
+        try {
+            if (!$this->db->table_exists(self::TABLE)) {
+                $this->db->query(file_get_contents(__DIR__ . '/sql/evaluations.sql'));
+            }
+            return $this->db->insert(self::evaluation_row($result), self::TABLE);
+        } catch (Throwable $e) {
+            // The visitor sees this message; the database's own (which can
+            // quote the SQL) goes to the log as the previous exception.
+            throw new RuntimeException("The check worked but couldn't be saved, so it isn't shown. Try again in a moment.", 0, $e);
         }
-        return $this->db->insert(self::evaluation_row($result), self::TABLE);
     }
 
     /** A check() result as an `evaluations` row. */
