@@ -30,7 +30,7 @@
         <div class="verdict" id="verdict"></div>
         <h2 id="title"></h2>
         <h3>TL;DR</h3>
-        <ol id="tldr"></ol>
+        <p id="tldr"></p>
         <div id="ask-panel">
             <h3><label for="ask">Ask the article</label></h3>
             <form class="url-row" id="ask-form" role="search">

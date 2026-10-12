@@ -49,7 +49,7 @@ function draw(answer) {
   } else {
     title.textContent = answer.title || "Pasted text";
   }
-  $("tldr").replaceChildren(...answer.tldr.map((s) => el("li", s)));
+  $("tldr").textContent = answer.tldr;
   drawAsk(answer);
   drawTimeline(answer);
   $("summary").textContent = answer.summary;

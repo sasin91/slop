@@ -17,8 +17,12 @@ require_once __DIR__ . '/Article_map.php';
  * - figures: sentences with a digit in them (numbers, versions, sizes).
  * - stock words: the vocabulary of generated text (STOCK_WORDS), counted
  *   as words, since a static model can't tell "delve" from "dig".
- * - TL;DR: the TLDR_SENTENCES sentences nearest the centre of the
- *   article's non-filler sentences, in the article's order.
+ * - TL;DR: one short sentence stating the article's point. Of the
+ *   prose sentences that aren't filler, repeats, questions or citations,
+ *   the one nearest both the title and the centre of the article, with a
+ *   lift for sentences that state a claim (CLAIM_CUES) and a drop for the
+ *   intro, which sets the scene more often than it states the point;
+ *   then cut to its main clause (gist()).
  * - the timeline, the questions to ask and the sentences' vectors, for
  *   the page's Ask box: see Article_map.
  *
@@ -34,8 +38,38 @@ class Slop_index {
     const FILLER_MARGIN = 0.08;
     const NEAREST = 3;
     const REPEAT = 0.92;
-    const TLDR_SENTENCES = 3;
     const TLDR_MIN_WORDS = 8;
+    const TLDR_MAX_WORDS = 40;
+    const GIST_WORDS = 18;
+    const MIN_CLAUSE = 6;
+    const CLAIM_LIFT = 0.06;
+    const INTRO = 0.15;
+    const INTRO_DROP = 0.04;
+    const ASIDE_DROP = 0.1;
+
+    // Words that state a point rather than describe a step.
+    const CLAIM_CUES = '/\b(should|shouldn[\x27’]t|must|don[\x27’]t need|no need|instead|rather than| than |better|cheaper|faster|'
+        . 'the point|the key|the trick|the lesson|the takeaway|the answer|the real|bottom line|in short|'
+        . 'turns out|which means|that[\x27’]s why|this is why|is why|means that|so you|you can|you don[\x27’]t|'
+        . 'already|stop|never|always|the best|beats?|wins?|outperforms?)\b/iu';
+
+    // Sentences that lean on the ones around them: an example, a pointer
+    // to what follows, or one that opens on what came before.
+    const ASIDES = '/^(?:here[\x27’]?s|here is|here are|this|that|these|those|it|they|for example|for instance|'
+        . 'e\.g\.|also|another|then|next|first|second|finally)\b|\b(?:for example|for instance|e\.g\.)/iu';
+
+    // How a clause that isn't the sentence's main one starts.
+    const NOT_MAIN = '/^(?:for|in|on|with|by|at|of|to|from|when|if|after|before|while|although|because|since|unless)\b/iu';
+
+    // A sales pitch or a sign-off, which closes many posts but isn't their point.
+    const PITCH = '/\b(?:sign up|get started|free trial|try it|subscribe|follow me|integrates with|book a demo|'
+        . 'our (?:product|platform|team|tool|app|service))\b/iu';
+
+    // Lead-ins that come before the point and add nothing to it.
+    const LEAD_INS = '/^(?:(?:so|and|but|basically|ultimately|in short|in other words|in the end|'
+        . 'tl;?dr|the point is(?: that)?|the takeaway(?: is)?(?: that)?|the lesson(?: here)?(?: is)?(?: that)?|'
+        . 'the bottom line(?: is)?(?: that)?|that[\x27’]s why|this is why|which means|in this (?:post|article),? i(?: will)?'
+        . '(?: argue| show| explain)?(?: that| how| why)?)[,:]?\s+)+/iu';
 
     const STOCK_WORDS = ['delve', 'delves', 'delving', 'tapestry', 'testament', 'game-changer', 'game-changing',
         'unlock', 'unlocks', 'unleash', 'seamless', 'seamlessly', 'leverage', 'leveraging', 'landscape', 'realm',
@@ -117,7 +151,7 @@ class Slop_index {
                 'stock_words' => array_sum($stock),
             ],
             'stock_words' => $stock,
-            'tldr' => $this->tldr($sentences, $vectors),
+            'tldr' => $this->tldr($sentences, $vectors, $this->title_vector($article['title'] ?? '')),
             'timeline' => Article_map::timeline($sentences, $vectors),
             'questions' => Article_map::questions($article['sentences']),
             'vectors' => ['dim' => $this->model->dim, 'q8' => Article_map::pack($vectors, count($sentences), $this->model->dim)],
@@ -125,16 +159,28 @@ class Slop_index {
     }
 
     /**
-     * The TL;DR: the sentences nearest the centre of the non-filler
-     * sentences (all of them when every one is filler), in article order.
+     * The TL;DR: one sentence stating the article's point, cut to its gist
+     * (see the class comment), or '' when nothing qualifies.
      *
-     * @return string[]
+     * @param ?float[] $title the title's vector, when it has one
      */
-    public function tldr(array $sentences, array $vectors): array {
-        $pool = array_filter(array_keys($vectors), fn($i) => !$sentences[$i]['filler']
-            && preg_match_all('/[\p{L}\p{N}]+/u', $sentences[$i]['text']) >= self::TLDR_MIN_WORDS);
+    public function tldr(array $sentences, array $vectors, ?array $title = null): string {
+        $ranked = $this->points($sentences, $vectors, $title);
+        return $ranked ? self::gist($sentences[array_key_first($ranked)]['text']) : '';
+    }
+
+    /**
+     * The sentences that could state the point, best first, as index =>
+     * score: nearness to the title and the centre, CLAIM_LIFT for a claim,
+     * less INTRO_DROP in the intro and ASIDE_DROP for an aside.
+     *
+     * @return array<int, float>
+     */
+    public function points(array $sentences, array $vectors, ?array $title = null): array {
+        $n = count($sentences);
+        $pool = array_filter(array_keys($vectors), fn($i) => self::could_be_point($sentences[$i]));
         if (!$pool) {
-            $pool = array_keys($vectors);
+            $pool = array_filter(array_keys($vectors), fn($i) => $sentences[$i]['repeats'] === null);
         }
         if (!$pool) {
             return [];
@@ -146,16 +192,84 @@ class Slop_index {
             }
         }
         $centre = Static_model::unit($centre);
+        $intro = max(2, (int) ceil($n * self::INTRO));
         $scores = [];
         foreach ($pool as $i) {
-            if ($sentences[$i]['repeats'] === null) {
-                $scores[$i] = Static_model::cosine($centre, $vectors[$i]);
+            $text = $sentences[$i]['text'];
+            $score = Static_model::cosine($centre, $vectors[$i]);
+            if ($title !== null) {
+                $score = ($score + Static_model::cosine($title, $vectors[$i])) / 2;
             }
+            $score += self::CLAIM_LIFT * min(2, preg_match_all(self::CLAIM_CUES, $text));
+            if (preg_match(self::ASIDES, $text)) {
+                $score -= self::ASIDE_DROP;
+            }
+            if ($i < $intro && $n > $intro) {
+                $score -= self::INTRO_DROP;
+            }
+            $scores[$i] = $score;
         }
         arsort($scores);
-        $picked = array_slice(array_keys($scores), 0, self::TLDR_SENTENCES);
-        sort($picked);
-        return array_map(fn($i) => $sentences[$i]['text'], $picked);
+        return $scores;
+    }
+
+    /**
+     * $sentence cut to its point: without lead-ins ("So,", "The point is
+     * that") or asides in brackets, and past GIST_WORDS words, to its main
+     * clause: before a dash or semicolon, or after a colon that ends a
+     * short lead-in ("Here's the thing: …").
+     */
+    public static function gist(string $sentence): string {
+        $text = preg_replace('/^(?:\(?[ivx\d]{1,4}[.)]\s+)/iu', '', trim($sentence));
+        $text = trim(preg_replace('/\s*\([^()]*\)/u', '', $text));
+        $text = preg_replace(self::LEAD_INS, '', $text);
+        $words = fn(string $s) => preg_match_all('/[\p{L}\p{N}]+/u', $s);
+        if ($words($text) > self::GIST_WORDS) {
+            // An aside between dashes goes first: "For most uses — a, b, c — X wins."
+            // It leaves a comma only after an opening phrase, not between a subject and its verb.
+            $text = preg_replace('/\s+[—–]\s+[^—–]+\s+[—–]\s+/u', preg_match(self::NOT_MAIN, $text) ? ', ' : ' ', $text);
+        }
+        if ($words($text) > self::GIST_WORDS) {
+            $colon = preg_split('/:\s+/u', $text, 2);
+            if (count($colon) === 2 && $words($colon[0]) < self::MIN_CLAUSE && $words($colon[1]) >= self::MIN_CLAUSE) {
+                $text = $colon[1];
+            }
+        }
+        if ($words($text) > self::GIST_WORDS) {
+            foreach (preg_split('/\s+[—–]\s+|\s+-\s+|;\s+|:\s+|,\s+(?=(?:which|while|whereas|giving|making|letting|leaving|allowing)\b)/u', $text) as $clause) {
+                // A clause opening on a preposition or "if" isn't the main one.
+                if ($words($clause) >= self::MIN_CLAUSE && !preg_match(self::NOT_MAIN, $clause)) {
+                    $text = $clause;
+                    break;
+                }
+            }
+        }
+        $text = rtrim(trim($text), " ,;:—–-");
+        if ($text === '') {
+            return trim($sentence);
+        }
+        $text = mb_strtoupper(mb_substr($text, 0, 1, 'UTF-8'), 'UTF-8') . mb_substr($text, 1, null, 'UTF-8');
+        return preg_match('/[.!?…]["”’)]*$/u', $text) ? $text : $text . '.';
+    }
+
+    /**
+     * Whether a sentence could state the point: prose of TLDR_MIN_WORDS to
+     * TLDR_MAX_WORDS words that isn't filler, a repeat, a fragment, code, a question, the
+     * lead-in to a list (ending in a colon), a pitch (PITCH) or a citation (a footnote's ↩,
+     * a [n] marker, or a quoted title).
+     */
+    private static function could_be_point(array $sentence): bool {
+        $text = $sentence['text'];
+        $words = preg_match_all('/[\p{L}\p{N}]+/u', $text);
+        return !$sentence['filler'] && $sentence['repeats'] === null
+            && $words >= self::TLDR_MIN_WORDS && $words <= self::TLDR_MAX_WORDS
+            && !preg_match('/[?:]["”’)]*$/u', $text) && !preg_match('/^\p{Ll}/u', $text) && !preg_match(self::PITCH, $text)
+            && !preg_match('/[{}<>=`]|\w_\w/u', $text)
+            && !preg_match('/↩|^\[\d+\]|^\^|,["”]\s|["“][^"”]+["”],?\s+(?:\p{L}+\.?\s+)?\d{4}/u', $text);
+    }
+
+    private function title_vector(string $title): ?array {
+        return $title === '' ? null : $this->model->encode($title)['vector'];
     }
 
     /** Each stock word found in $text with how often, most first. */

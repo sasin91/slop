@@ -16,7 +16,8 @@ var_dump($reading['sentences'][0]['filler'], $reading['sentences'][3]['filler'])
 var_dump($reading['sentences'][5]['repeats']);
 print_r($reading['counts']);
 print_r($reading['stock_words']);
-var_dump(count($reading['tldr']), in_array($sentences[0], $reading['tldr'], true));
+echo $reading['tldr'], "
+";
 ?>
 --EXPECT--
 bool(true)
@@ -38,5 +39,4 @@ Array
     [landscape] => 2
     [crucial] => 2
 )
-int(3)
-bool(false)
+We added a separate index on the SKU column and the import dropped to 48 minutes.

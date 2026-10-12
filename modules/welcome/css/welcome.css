@@ -254,7 +254,7 @@ summary { cursor: pointer; color: var(--accent); margin: 8px 0; }
 .verdict.not-slop { background: var(--met-bg); color: var(--met); }
 .verdict.unknown { background: var(--partial-bg); color: var(--partial); }
 
-#tldr li { margin-bottom: 6px; }
+#tldr { font-size: 1.125rem; margin: 0; }
 
 .sentences li { margin-bottom: 4px; }
 .sentences .filler { background: var(--partial-bg); }
