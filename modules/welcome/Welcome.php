@@ -13,8 +13,8 @@ require_once __DIR__ . '/Laya_limit.php';
  * Page_reader::TIMEOUT seconds), the embeddings (well under a second for
  * MAX_SENTENCES) and one Laya call (LAYA_TIMEOUT), inside the platform's
  * 30 second limit. The result is then saved to the database when one is
- * configured (Welcome_model); a failed save is logged and the visitor still
- * gets the result.
+ * configured (Welcome_model); a failed save fails the check like any other
+ * server error.
  *
  * The page is public, so checks are limited per visitor address (MAX_CHECKS
  * per WINDOW seconds, Laya_limit): each one fetches a page and asks Laya,
@@ -42,7 +42,7 @@ class Welcome extends Trongate {
         header('Content-Type: application/json');
         try {
             $result = $this->assess($this->read_input());
-            echo json_encode($result + ['id' => $this->save($result)]);
+            echo json_encode($result + ['id' => $this->model->save_evaluation($result)]);
         } catch (Throwable $e) {
             // A status set before the throw (400s) is the visitor's input,
             // not a failure worth logging.
@@ -97,16 +97,6 @@ class Welcome extends Trongate {
             'title' => $article['title'],
             'summary' => $summary,
         ] + $reading + $this->laya($summary);
-    }
-
-    /** Saves the check: its id, or null with no database or a failed save. */
-    private function save(array $result): ?int {
-        try {
-            return $this->model->save_evaluation($result);
-        } catch (Throwable $e) {
-            self::log_failure($e);
-            return null;
-        }
     }
 
     /** Laya's answer on the summary, or why there isn't one. */
