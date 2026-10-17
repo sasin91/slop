@@ -119,8 +119,10 @@ class Slop_index {
      * The article (Article_reader) indexed: per sentence {text, lean, filler,
      * repeats, figure}, the counts, the stock words found, the TL;DR, the
      * timeline, questions to ask and every sentence's vector (Article_map).
+     * $step is told 'tldr' and then 'map' as the work gets there
+     * (Check_progress::step()).
      */
-    public function assess(array $article): array {
+    public function assess(array $article, ?callable $step = null): array {
         $sentences = [];
         $vectors = [];
         foreach ($article['sentences'] as $i => $text) {
@@ -147,6 +149,10 @@ class Slop_index {
 
         $stock = self::stock_words(implode(' ', $article['sentences']));
         $count = fn(string $key) => count(array_filter($sentences, fn($s) => $s[$key] !== false && $s[$key] !== null));
+        $step ??= fn(string $key) => null;
+        $step('tldr');
+        $tldr = $this->tldr($sentences, $vectors, $this->title_vector($article['title'] ?? ''));
+        $step('map');
         return [
             'sentences' => $sentences,
             'counts' => [
@@ -160,7 +166,7 @@ class Slop_index {
                 'stock_words' => array_sum($stock),
             ],
             'stock_words' => $stock,
-            'tldr' => $this->tldr($sentences, $vectors, $this->title_vector($article['title'] ?? '')),
+            'tldr' => $tldr,
             'timeline' => Article_map::timeline($sentences, $vectors),
             'questions' => Article_map::questions($article['sentences']),
             'vectors' => ['dim' => $this->model->dim, 'q8' => Article_map::pack($vectors, count($sentences), $this->model->dim)],

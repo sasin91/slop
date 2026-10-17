@@ -26,6 +26,29 @@
         <p class="error" id="error" role="alert" hidden></p>
     </form>
 
+    <details class="panel" id="progress" open>
+        <summary><span id="progress-title">What happens when you press Check</span> <span class="muted" id="progress-time"></span></summary>
+        <ol class="check-steps" aria-live="polite">
+            <?php $number = 0; foreach ($steps as $key => $step): $number++; ?>
+                <li class="check-step" id="step-<?= $key ?>" data-state="waiting"<?= isset($step['skipped']) ? ' data-skipped="' . htmlspecialchars($step['skipped']) . '"' : '' ?>>
+                    <span class="check-dot" aria-hidden="true"><?= $number ?></span>
+                    <div class="check-head">
+                        <strong><?= htmlspecialchars($step['title']) ?></strong>
+                        <span class="check-label"></span>
+                        <span class="check-time"></span>
+                    </div>
+                    <p class="check-tldr"><?= htmlspecialchars($step['tldr']) ?></p>
+                    <details class="check-about">
+                        <summary>What happens</summary>
+                        <?php foreach ($step['about'] as $line): ?>
+                            <p><?= htmlspecialchars($line) ?></p>
+                        <?php endforeach; ?>
+                    </details>
+                </li>
+            <?php endforeach; ?>
+        </ol>
+    </details>
+
     <section class="panel" id="result" hidden aria-live="polite">
         <div class="verdict" id="verdict"></div>
         <h2 id="title"></h2>

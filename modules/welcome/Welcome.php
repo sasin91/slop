@@ -3,6 +3,7 @@ require_once __DIR__ . '/Article_reader.php';
 require_once __DIR__ . '/Slop_index.php';
 require_once __DIR__ . '/Laya_client.php';
 require_once __DIR__ . '/Laya_limit.php';
+require_once __DIR__ . '/Check_progress.php';
 /**
  * The home page: paste a link to an article (or its text) and get a TL;DR
  * and whether it's slop.
@@ -14,7 +15,8 @@ require_once __DIR__ . '/Laya_limit.php';
  * MAX_SENTENCES) and one Laya call (LAYA_TIMEOUT), inside the platform's
  * 30 second limit. The result is then saved to the database when one is
  * configured (Welcome_model); a failed save fails the check like any other
- * server error.
+ * server error. A page that asks for it gets each step as the server enters
+ * it, so the visitor can follow along (Check_progress).
  *
  * The page is public, so checks are limited per visitor address (MAX_CHECKS
  * per WINDOW seconds, Laya_limit): each one fetches a page and asks Laya,
@@ -34,29 +36,28 @@ class Welcome extends Trongate {
 
     /** The page. */
     public function index(): void {
-        $this->view('welcome', ['base_url' => BASE_URL]);
+        $this->view('welcome', ['base_url' => BASE_URL, 'steps' => Check_progress::STEPS]);
     }
 
     /**
      * POST {url} or {text}: the TL;DR, the per-sentence reading, the counts
      * and Laya's verdict (`laya`), or `laya_error` saying why there is none.
+     * With `Accept: application/x-ndjson`, each step first (Check_progress).
      */
     public function check(): void {
-        header('Content-Type: application/json');
+        $progress = new Check_progress(Check_progress::wanted($_SERVER));
         try {
-            $result = $this->assess($this->read_input());
-            echo json_encode($result + ['id' => $this->model->save_evaluation($result)]);
+            $result = $this->assess($this->read_input(), $progress);
+            $progress->step('save');
+            $progress->finish($result + ['id' => $this->model->save_evaluation($result)]);
+        } catch (Check_refused $e) {
+            // The visitor's input, with a message for them.
+            $progress->fail($e->getCode(), $e->getMessage());
         } catch (Throwable $e) {
-            // A status set before the throw (400s) is the visitor's input,
-            // with a message for them. Anything else is ours: its message
-            // (a database's can quote SQL) goes to the log, not the page.
-            if (http_response_code() >= 400) {
-                echo json_encode(['error' => $e->getMessage()]);
-                return;
-            }
-            http_response_code(500);
+            // Ours: its message (a database's can quote SQL) goes to the
+            // log, not the page.
             self::log_failure($e);
-            echo json_encode(['error' => 'Something went wrong on our side, so there is no result. Try again in a moment.']);
+            $progress->fail(500, 'Something went wrong on our side, so there is no result. Try again in a moment.');
         }
     }
 
@@ -72,13 +73,14 @@ class Welcome extends Trongate {
         try {
             $text = trim((string) ($this->read_input()['text'] ?? ''));
             if ($text === '' || mb_strlen($text, 'UTF-8') > self::MAX_QUESTION) {
-                http_response_code(422);
-                throw new RuntimeException('Ask a question of at most ' . self::MAX_QUESTION . ' characters.');
+                throw new Check_refused('Ask a question of at most ' . self::MAX_QUESTION . ' characters.', 422);
             }
             $vector = Static_model::load(Slop_index::MODEL_DIR)->encode($text)['vector'];
             echo json_encode(['vector' => $vector === null ? null : array_map(fn($v) => round($v, 5), $vector)]);
         } catch (Throwable $e) {
-            if (http_response_code() < 400) {
+            if ($e instanceof Check_refused) {
+                http_response_code($e->getCode());
+            } else {
                 http_response_code(502);
                 self::log_failure($e);
             }
@@ -86,44 +88,43 @@ class Welcome extends Trongate {
         }
     }
 
-    private function assess(array $input): array {
+    private function assess(array $input, Check_progress $progress): array {
         $url = trim((string) ($input['url'] ?? ''));
         $text = trim((string) ($input['text'] ?? ''));
         if ($url === '' && $text === '') {
-            http_response_code(422);
-            throw new RuntimeException('Paste a link to an article, or its text.');
+            throw new Check_refused('Paste a link to an article, or its text.', 422);
         }
         if (mb_strlen($text, 'UTF-8') > self::MAX_TEXT) {
-            http_response_code(413);
-            throw new RuntimeException('That text is too long. Paste only the article.');
+            throw new Check_refused('That text is too long. Paste only the article.', 413);
         }
         $wait = (new Laya_limit(sys_get_temp_dir() . '/slop-limit', self::MAX_CHECKS, self::WINDOW))
             ->take(Laya_limit::client($_SERVER));
         if ($wait > 0) {
-            http_response_code(429);
             $minutes = (int) ceil($wait / 60);
-            throw new RuntimeException("You've checked a lot of articles in a short time. Try again in $minutes minute" . ($minutes === 1 ? '' : 's') . '.');
+            throw new Check_refused("You've checked a lot of articles in a short time. Try again in $minutes minute" . ($minutes === 1 ? '' : 's') . '.', 429);
         }
 
         if ($url !== '') {
+            $progress->step('fetch');
             try {
-                $article = Article_reader::read($url);
+                $article = Article_reader::read($url, fn() => $progress->step('read'));
             } catch (RuntimeException $e) {
                 // Page_reader's messages are for the person who pasted the link.
-                http_response_code(422);
-                throw $e;
+                throw new Check_refused($e->getMessage(), 422, $e);
             }
         } else {
+            $progress->step('read');
             $article = Article_reader::from_text($text);
         }
         if (!$article['sentences']) {
-            http_response_code(422);
-            throw new RuntimeException('There are no sentences to read in that article. If the page needs JavaScript, copy the text and paste it instead.');
+            throw new Check_refused('There are no sentences to read in that article. If the page needs JavaScript, copy the text and paste it instead.', 422);
         }
 
+        $progress->step('score');
         $index = Slop_index::load();
-        $reading = $index->assess($article);
+        $reading = $index->assess($article, $progress->step(...));
         $summary = Slop_index::laya_summary($article['title'], $reading['counts'], $reading['stock_words']);
+        $progress->step('laya');
         return [
             'url' => $article['url'] ?? null,
             'title' => $article['title'],
@@ -149,13 +150,11 @@ class Welcome extends Trongate {
         // A JSON content type can't be sent cross-site without a CORS
         // preflight, which this site never answers.
         if (!str_starts_with(strtolower($_SERVER['CONTENT_TYPE'] ?? ''), 'application/json')) {
-            http_response_code(415);
-            throw new RuntimeException('Expected a JSON body.');
+            throw new Check_refused('Expected a JSON body.', 415);
         }
         $input = json_decode(file_get_contents('php://input'), true);
         if (!is_array($input)) {
-            http_response_code(400);
-            throw new RuntimeException('Expected a JSON body.');
+            throw new Check_refused('Expected a JSON body.', 400);
         }
         return $input;
     }

@@ -31,11 +31,15 @@ class Article_reader {
 
     /**
      * The article at $url: {url, title, sentences, words, code_blocks, links}.
+     * $fetched is called between fetching the page and reading it.
      *
      * @throws RuntimeException with a message for the person who pasted the URL.
      */
-    public static function read(string $url): array {
+    public static function read(string $url, ?callable $fetched = null): array {
         $page = Page_reader::fetch_page($url);
+        if ($fetched) {
+            $fetched();
+        }
         return ['url' => $page['url']] + self::parse($page['body'], $page['content_type'], $page['url']);
     }
 
