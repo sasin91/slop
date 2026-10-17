@@ -1,9 +1,11 @@
 // The home page: sends the link (or pasted text) to welcome/check
-// and draws the answer. The reading and the verdict happen on the server
+// and draws the answer, following the check step by step (progress.js).
+// The reading and the verdict happen on the server
 // (Welcome.php); this file only shows them, and lets the visitor ask the
 // article questions (ask.js) and walk its timeline.
 
 import { embed, highlighted, prepare, rank } from "./ask.js";
+import { begin, enter, fail, finish, readSteps } from "./progress.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -165,21 +167,30 @@ async function check(event) {
   const button = $("check");
   button.disabled = true;
   button.querySelector(".label").textContent = "Reading…";
+  begin();
   try {
     const response = await fetch("welcome/check", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      // ndjson: each step as the server gets to it (progress.js). A check
+      // refused up front still comes back as one JSON error.
+      headers: { "Content-Type": "application/json", Accept: "application/x-ndjson, application/json" },
       body: JSON.stringify(url ? { url } : { text }),
     });
     let answer;
-    try {
-      answer = await response.json();
-    } catch {
-      throw new Error(`The server answered HTTP ${response.status} without a result. Try again.`);
+    if ((response.headers.get("Content-Type") ?? "").includes("application/x-ndjson")) {
+      answer = await readSteps(response, enter);
+    } else {
+      try {
+        answer = await response.json();
+      } catch {
+        throw new Error(`The server answered HTTP ${response.status} without a result. Try again.`);
+      }
+      if (answer.error) throw new Error(answer.error);
     }
-    if (answer.error) throw new Error(answer.error);
     draw(answer);
+    finish();
   } catch (error) {
+    fail();
     showError(error.message === "Failed to fetch" ? "Couldn't reach the server. Check your connection and try again." : error.message);
   } finally {
     button.disabled = false;

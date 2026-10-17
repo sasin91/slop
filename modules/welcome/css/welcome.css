@@ -313,3 +313,70 @@ summary { cursor: pointer; color: var(--accent); margin: 8px 0; }
 }
 .answers .link-button, .timeline .link-button { display: block; text-align: left; color: var(--text); padding: 2px 0; }
 .answers .link-button:hover:not(:disabled), .timeline .link-button:hover:not(:disabled) { color: var(--accent); }
+
+/* ---------- the check's steps (Check_progress, js/progress.js) ---------- */
+/* Borrowed from trongate.cloud's deploy timeline. */
+
+#progress > summary { font-weight: 600; color: var(--text); margin: 0; }
+#progress[open] > summary { margin-bottom: 16px; }
+#progress-time { font-weight: 400; font-variant-numeric: tabular-nums; }
+
+.check-steps { list-style: none; margin: 0; padding: 0; }
+.check-step { position: relative; padding: 0 0 16px 40px; }
+.check-step:last-child { padding-bottom: 0; }
+/* The line down to the next step */
+.check-step::after {
+  content: "";
+  position: absolute;
+  left: 12px;
+  top: 30px;
+  bottom: 2px;
+  width: 2px;
+  background: var(--line);
+  transition: background 0.3s;
+}
+.check-step:last-child::after { display: none; }
+.check-step[data-state="done"]::after { background: var(--met); }
+
+.check-dot {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--bg);
+  border: 2px solid var(--line);
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+  transition: background 0.3s, border-color 0.3s, color 0.3s;
+}
+.check-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 10px; min-height: 26px; }
+.check-label, .check-time { font-size: 0.8rem; color: var(--muted); }
+.check-time { font-variant-numeric: tabular-nums; }
+.check-tldr { margin: 2px 0 0; color: var(--muted); }
+.check-about summary { margin: 4px 0 0; font-size: 0.85rem; width: max-content; }
+.check-about p { margin: 6px 0; font-size: 0.9rem; }
+
+.check-step[data-state="current"] .check-dot {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--panel);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+.check-step[data-state="current"] .check-label { color: var(--accent); }
+.check-step[data-state="current"] .check-tldr { color: var(--text); }
+.check-step[data-state="done"] .check-dot { background: var(--met-bg); border-color: var(--met); color: var(--met); font-size: 0; }
+.check-step[data-state="done"] .check-dot::after { content: "✓"; font-size: 0.85rem; animation: pop 0.35s var(--ease); }
+.check-step[data-state="failed"] .check-dot { background: var(--missing-bg); border-color: var(--missing); color: var(--missing); }
+.check-step[data-state="failed"] .check-label { color: var(--missing); }
+.check-step[data-state="skipped"] .check-dot { border-style: dashed; }
+.check-step[data-state="skipped"] strong { color: var(--muted); }
+
+@keyframes pulse { 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 20%, transparent); } }
+@media (prefers-reduced-motion: reduce) {
+  .check-step[data-state="current"] .check-dot { animation: none !important; }
+}
